@@ -564,15 +564,28 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                     print(f"[SUCCESS] Saved to {output_path}", flush=True)
                     # --- TELEGRAM UPLOAD ---
                     if tg:
+                        def safe_run(coro):
+                            # Ensure we don't crash by calling run_until_complete on an already running loop (when using Aiogram UI)
+                            if tg.client.loop.is_running():
+                                return asyncio.run_coroutine_threadsafe(coro, tg.client.loop).result()
+                            else:
+                                return tg.client.loop.run_until_complete(coro)
+                                
                         caption = f"👤 Creator: {prefix or 'Unknown'}\n📁 File: {filename}"
-                        upload_success = tg.client.loop.run_until_complete(tg.upload_video(output_path, caption))
+                        upload_success = safe_run(tg.upload_video(output_path, caption))
                         if upload_success:
-                            tg.client.loop.run_until_complete(tg.send_log(f"✅ Successfully uploaded <code>{filename}</code>"))
+                            safe_run(tg.send_log(f"✅ Successfully uploaded <code>{filename}</code>"))
                             # Optional: Delete file after upload to save space
                             # os.remove(output_path)
                 else:
                     print(f"[!] Failed to download: {video['title']}", flush=True)
-                    if tg: tg.client.loop.run_until_complete(tg.send_log(f"❌ Failed to download <code>{video['title']}</code>"))
+                    if tg: 
+                        def safe_run(coro):
+                            if tg.client.loop.is_running():
+                                return asyncio.run_coroutine_threadsafe(coro, tg.client.loop).result()
+                            else:
+                                return tg.client.loop.run_until_complete(coro)
+                        safe_run(tg.send_log(f"❌ Failed to download <code>{video['title']}</code>"))
             else:
                 print(f"[!] Critical failure: Failed to resolve link for: {video['title']}. Triggering safety shutdown.", flush=True)
                 sys.exit(1) # This tells the auto_runner to wait 5 minutes
