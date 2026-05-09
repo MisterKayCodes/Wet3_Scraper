@@ -12,7 +12,14 @@ SESSION_STRING = config.SESSION_STRING
 
 class TelegramService:
     def __init__(self):
-        self.client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+        self.client = TelegramClient(
+            StringSession(SESSION_STRING), 
+            API_ID, 
+            API_HASH,
+            connection_retries=5,
+            retry_delay=5,
+            timeout=30
+        )
         self.target_channel = None
 
     async def start(self):
