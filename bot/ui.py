@@ -12,7 +12,8 @@ def get_start_message():
         "🔍 <code>/scrape [URL]</code> — Analyze a profile\n"
         "📍 <code>/set_channel [Link]</code> — Change destination\n"
         "📡 <code>/test_target</code> — Verify permissions\n"
-        "📊 <code>/status</code> — System health report\n\n"
+        "📊 <code>/status</code> — System health report\n"
+        "📝 <code>/logs</code> — View terminal activity\n\n"
         "<i>Send a Wet3 link to begin.</i>"
     )
 

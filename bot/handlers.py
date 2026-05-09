@@ -2,6 +2,8 @@ from aiogram import Router, F, types, Bot
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncio
+import os
+import html
 import platform
 import psutil
 
@@ -71,10 +73,33 @@ async def cmd_status(message: types.Message):
     
     await message.answer(ui.get_status_message(platform.system(), cpu_usage, ram_usage, target))
 
+@router.message(Command("logs"))
+async def cmd_logs(message: types.Message):
+    """Sends the last 20 lines of the bot log."""
+    log_path = "logs/bot.log"
+    if not os.path.exists(log_path):
+        await message.answer("⚠️ No log file found yet.")
+        return
+        
+    try:
+        with open(log_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            last_lines = lines[-20:] # Get last 20 lines
+            log_text = "".join(last_lines)
+            
+        if not log_text:
+            await message.answer("📭 Log file is currently empty.")
+        else:
+            # Escape HTML to prevent "can't parse entities" errors
+            safe_log = html.escape(log_text)
+            await message.answer(f"📝 <b>Recent Logs:</b>\n<pre>{safe_log}</pre>", parse_mode="HTML")
+    except Exception as e:
+        await message.answer(f"❌ Failed to read logs: {e}")
+
 # --- PHASE 3: SCRAPING ENGINE ---
 
 @router.message(Command("scrape"))
-async def cmd_scrape(message: types.Message, orchestrator, telethon_worker):
+async def cmd_scrape(message: types.Message, orchestrator, telethon_worker, bot: Bot):
     args = message.text.split(" ")
     if len(args) < 2:
         await message.answer("⚠️ Usage: `/scrape [URL]`")
@@ -87,7 +112,14 @@ async def cmd_scrape(message: types.Message, orchestrator, telethon_worker):
     
     # Run scrape in executor (sync logic)
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, orchestrator.run_full_pipeline, url, profile_name, "none", True, None, telethon_worker)
+    
+    def status_callback(text):
+        asyncio.run_coroutine_threadsafe(
+            bot.edit_message_text(text, chat_id=status_msg.chat.id, message_id=status_msg.message_id),
+            loop
+        )
+
+    result = await loop.run_in_executor(None, orchestrator.run_full_pipeline, url, profile_name, "none", True, None, status_callback, telethon_worker)
     
     if result.get("status") == "success":
         builder = InlineKeyboardBuilder()
@@ -132,9 +164,17 @@ async def handle_download(callback: types.CallbackQuery, orchestrator, telethon_
             asyncio.get_event_loop()
         )
 
+    def status_callback(text):
+        # We only update status if it's not a progress bar update (to avoid overlapping)
+        if "Processing" in text or "Queueing" in text:
+            asyncio.run_coroutine_threadsafe(
+                bot.edit_message_text(text, chat_id=callback.message.chat.id, message_id=callback.message.message_id),
+                asyncio.get_event_loop()
+            )
+
     # Run orchestrated pipeline
     loop = asyncio.get_event_loop()
     url = f"https://wet3.click/user/{profile_name}"
-    await loop.run_in_executor(None, orchestrator.run_full_pipeline, url, profile_name, mode, True, progress_callback, telethon_worker)
+    await loop.run_in_executor(None, orchestrator.run_full_pipeline, url, profile_name, mode, True, progress_callback, status_callback, telethon_worker)
     
     await callback.message.answer(ui.get_finished_message(profile_name))

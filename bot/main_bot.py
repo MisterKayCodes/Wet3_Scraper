@@ -3,6 +3,7 @@ import sys
 import asyncio
 import json
 import logging
+from pathlib import Path
 from loguru import logger
 
 class InterceptHandler(logging.Handler):
@@ -18,6 +19,11 @@ class InterceptHandler(logging.Handler):
         logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 logging.basicConfig(handlers=[InterceptHandler()], level=logging.INFO, force=True)
+
+# --- PHASE 1: LOGGING FOUNDATION ---
+# Ensure logs directory exists and set up file logging
+Path("logs").mkdir(exist_ok=True)
+logger.add("logs/bot.log", rotation="10 MB", retention="7 days", level="INFO", format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.default import DefaultBotProperties
@@ -60,6 +66,17 @@ dp.include_router(handlers.get_router())
 
 async def main():
     logger.info("Initializing Hybrid Bot...")
+    
+    # Set bot commands in the menu
+    commands = [
+        types.BotCommand(command="start", description="Show welcome message"),
+        types.BotCommand(command="status", description="Check bot health"),
+        types.BotCommand(command="logs", description="View recent terminal logs"),
+        types.BotCommand(command="set_channel", description="Set destination channel"),
+        types.BotCommand(command="test_target", description="Test connection to channel"),
+        types.BotCommand(command="scrape", description="Start scraping a URL"),
+    ]
+    await bot.set_my_commands(commands)
     
     # 1. Start Telethon Worker
     await telethon_worker.start()

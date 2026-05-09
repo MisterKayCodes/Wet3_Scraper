@@ -451,7 +451,7 @@ async def async_download_via_requests(url, browser_cookies, user_agent, output_p
         download_via_requests, url, browser_cookies, user_agent, output_path, referrer, origin
     )
 
-def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=None, headless=False, progress_callback=None, tg_service=None):
+def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=None, headless=False, progress_callback=None, status_callback=None, tg_service=None):
     """
     OPTIMIZED: Uses a single browser context for the entire queue.
     """
@@ -542,6 +542,8 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                 continue
 
             print(f"\n[{count}/{len(videos_list) + start_index - 1}] Task: {video['title']} ({video['type'].upper()})", flush=True)
+            if status_callback: 
+                status_callback(f"⬇️ <b>Processing:</b> {count}/{len(videos_list)}\n📂 <code>{filename}</code>")
             
             # 1. Resolve Link (using shared page)
             sd_link = decode_token(page, video['link'])

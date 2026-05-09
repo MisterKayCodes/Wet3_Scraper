@@ -10,7 +10,7 @@ from .downloader import resolve_monetized_link
 
 BASE_URL = "https://wet3.click"
 
-def get_profile_data(target_url, max_pages=None, headless=False):
+def get_profile_data(target_url, max_pages=None, headless=False, status_callback=None):
     """
     EVIDENCE-BASED SCRAPER: 
     - Verified Pagination (reads text from UI)
@@ -44,6 +44,7 @@ def get_profile_data(target_url, max_pages=None, headless=False):
             print(f"[*] INITIAL EVIDENCE: Page {current_p} of {total_p}", flush=True)
 
             while True:
+                if status_callback: status_callback(f"📄 <b>Processing Page:</b> {current_p} of {total_p}")
                 print(f"\n[*] --- PROCESSING PAGE {current_p} ---", flush=True)
                 
                 # Scroll to reveal content
