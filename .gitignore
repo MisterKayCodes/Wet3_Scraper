@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Project Specific - PRIVACY & STORAGE
+.env
+data/
+videos/
+test_output/
+scripts/tests/
+logs/
+*.log
+*.png
+
+# IDEs and Editors
+.vscode/
+.idea/
+.project
+.pydevproject
+
+# Operating System Files
+thumbs.db
+desktop.ini
+.DS_Store
+
+# Scratch files
+scratch/
+browser/
