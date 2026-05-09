@@ -57,7 +57,7 @@ def resolve_monetized_link(monetized_url):
         pass
     return None
 
-def decode_token(page, monetized_url):
+def decode_token(page, monetized_url, status_callback=None):
     """
     Extracts the 'sd' link from the monetized URL.
     FAST EXTRACTION: Checks for a direct token in the URL first to bypass broken redirects.
@@ -83,14 +83,44 @@ def decode_token(page, monetized_url):
         except Exception as e:
             print(f"[*] Fast Extraction skipped/failed: {e}", flush=True)
 
+    # --- PHASE 1.5: RAW HTTP EXTRACTION (The Ghost Bypass) ---
+    print(f"[*] Attempting Raw HTTP Bypass...", flush=True)
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+        }
+        res = requests.get(monetized_url, headers=headers, timeout=15)
+        if res.status_code == 200:
+            import re
+            token_match = re.search(r'token=([a-zA-Z0-9%+/=]+)', res.text)
+            if not token_match:
+                token_match = re.search(r'"token":"([a-zA-Z0-9%+/=]+)"', res.text)
+                
+            if token_match:
+                token_b64 = urllib.parse.unquote(token_match.group(1))
+                try:
+                    decoded_str = base64.b64decode(token_b64).decode('utf-8')
+                    if '"u":' in decoded_str:
+                        data = json.loads(decoded_str)
+                        print(f"[+] Ghost Bypass SUCCESS: {data['u'][:60]}...", flush=True)
+                        return data['u']
+                except Exception as e:
+                    print(f"[-] Ghost Bypass decode failed: {e}", flush=True)
+    except Exception as e:
+        print(f"[-] Ghost Bypass failed: {e}", flush=True)
+
     # --- PHASE 2: BROWSER RESOLUTION (Fallback) ---
     for attempt in range(3):
+        if attempt > 0 and status_callback:
+            status_callback(f"⚠️ <b>Timeout detected.</b> Retrying resolution (Attempt {attempt+1}/3)...")
+            
         try:
             # Use domcontentloaded for speed on redirect-heavy pages
             # Use a realistic referer to look human
             referer = "https://wet3.click/user/chika1"
-            # Switch to 'commit' to avoid being hung by slow ad-servers
-            page.goto(monetized_url, wait_until="commit", timeout=90000, referer=referer)
+            # Reduced timeout from 90s to 45s for smarter retries
+            page.goto(monetized_url, wait_until="commit", timeout=45000, referer=referer)
             time.sleep(5) # Wait for redirects to settle
             bypass_modal(page)
             
@@ -171,8 +201,9 @@ def decode_token(page, monetized_url):
             print(f"[!] Resolution attempt {attempt+1} failed: {e}", flush=True)
             # Take a debug screenshot to see what's wrong
             try:
-                page.screenshot(path=f"debug_fail_res_{attempt+1}.png")
-                print(f"[*] Debug screenshot saved: debug_fail_res_{attempt+1}.png", flush=True)
+                os.makedirs("debug", exist_ok=True)
+                page.screenshot(path=f"debug/debug_fail_res_{attempt+1}.png")
+                print(f"[*] Debug screenshot saved: debug/debug_fail_res_{attempt+1}.png", flush=True)
             except: pass
             time.sleep(5)
             
@@ -261,7 +292,7 @@ async def async_decode_token(page, monetized_url):
             
     return None
 
-def download_video_with_capture(context, sd_url, output_path, progress_callback=None):
+def download_video_with_capture(context, sd_url, output_path, progress_callback=None, status_callback=None):
     """
     Uses the shared context to trigger and capture the video download.
     """
@@ -302,14 +333,23 @@ def download_video_with_capture(context, sd_url, output_path, progress_callback=
     try:
         print(f"[*] Navigating to {sd_url}...", flush=True)
         
-        # --- ENHANCED STEALTH & RETRY LOOP ---
-        for attempt in range(5):
+        # --- ENHANCED STEALTH & SMART RETRY LOOP ---
+        for attempt in range(3):
+            if attempt > 0 and status_callback:
+                status_callback(f"⚠️ <b>Page unresponsive.</b> Reloading capture tool (Attempt {attempt+1}/3)...")
+                
             try:
-                # Use 'commit' to bypass ad-hangs
-                page.goto(sd_url, wait_until="commit", timeout=90000)
+                # Reduced timeout from 90s to 45s
+                page.goto(sd_url, wait_until="commit", timeout=45000)
             except Exception as e:
                 if "ERR_ABORTED" in str(e):
                     print("[*] Page aborted load (likely triggered a download, flush=True). Proceeding...")
+                elif "Timeout" in str(e):
+                    print(f"[!] Timeout on attempt {attempt+1}. Clearing state and retrying...", flush=True)
+                    # Smart retry: clear cookies specific to this page to reset connection
+                    context.clear_cookies()
+                    time.sleep(2)
+                    continue # Skip the rest of this attempt and try again
                 else:
                     raise e
             
@@ -368,7 +408,8 @@ def download_video_with_capture(context, sd_url, output_path, progress_callback=
                  success = download_via_requests(captured_url, cookies, user_agent, output_path)
         else:
             print("[!] Stream not found in network traffic after all attempts.", flush=True)
-            page.screenshot(path=f"debug_no_stream_{os.path.basename(output_path)}.png")
+            os.makedirs("debug", exist_ok=True)
+            page.screenshot(path=f"debug/debug_no_stream_{os.path.basename(output_path)}.png")
             # Debug log the page text
             text = page.inner_text("body")[:500]
             print(f"[*] Page text snippet: {text}...", flush=True)
@@ -488,7 +529,7 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
     videos_list = sorted(videos_list, key=lambda x: x.get('type', 'video') != 'video')
     
     with sync_playwright() as p, tqdm(total=len(videos_list), desc="Overall Progress", unit="item") as pbar:
-        # Launch with headless toggle
+        # Using Chromium (Visible Mode for Debugging)
         browser = p.chromium.launch(
             headless=headless,
             args=["--disable-blink-features=AutomationControlled", "--no-sandbox"]
@@ -509,6 +550,9 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                 print(f"[!] Warning: Some cookies failed to inject: {e}", flush=True)
             
         page = context.new_page()
+        if stealth:
+            try: stealth(page)
+            except: pass
         page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
         for i, video in enumerate(videos_list):
@@ -518,6 +562,10 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                 page.close()
                 context.set_extra_http_headers({"User-Agent": random.choice(user_agents)})
                 page = context.new_page()
+                if stealth:
+                    try: stealth(page)
+                    except: pass
+                page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
                 time.sleep(random.randint(5, 10))
 
             count = start_index + i
@@ -546,7 +594,7 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                 status_callback(f"⬇️ <b>Processing:</b> {count}/{len(videos_list)}\n📂 <code>{filename}</code>")
             
             # 1. Resolve Link (using shared page)
-            sd_link = decode_token(page, video['link'])
+            sd_link = decode_token(page, video['link'], status_callback=status_callback)
             
             if sd_link:
                 # Use Browser Capture for Wasabi or Host links (send.now)
@@ -560,34 +608,40 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                     success = download_via_requests(sd_link, context.cookies(), base_ua, output_path, referrer="https://nelb6o.wet3.click/")
                 else:
                     print(f"[*] Using Browser Capture for: {sd_link}", flush=True)
-                    success = download_video_with_capture(context, sd_link, output_path, progress_callback=progress_callback)
+                    success = download_video_with_capture(context, sd_link, output_path, progress_callback=progress_callback, status_callback=status_callback)
                 
                 if success:
                     print(f"[SUCCESS] Saved to {output_path}", flush=True)
                     # --- TELEGRAM UPLOAD ---
                     if tg:
-                        def safe_run(coro):
-                            # Ensure we don't crash by calling run_until_complete on an already running loop (when using Aiogram UI)
-                            if tg.client.loop.is_running():
-                                return asyncio.run_coroutine_threadsafe(coro, tg.client.loop).result()
-                            else:
-                                return tg.client.loop.run_until_complete(coro)
-                                
-                        caption = f"👤 Creator: {prefix or 'Unknown'}\n📁 File: {filename}"
-                        upload_success = safe_run(tg.upload_video(output_path, caption))
-                        if upload_success:
-                            safe_run(tg.send_log(f"✅ Successfully uploaded <code>{filename}</code>"))
-                            # Optional: Delete file after upload to save space
-                            # os.remove(output_path)
+                        try:
+                            def safe_run(coro):
+                                if tg.client.loop.is_running():
+                                    # Added a strict 3-minute timeout so Telegram cannot freeze the bot!
+                                    return asyncio.run_coroutine_threadsafe(coro, tg.client.loop).result(timeout=180)
+                                else:
+                                    return tg.client.loop.run_until_complete(coro)
+                                    
+                            caption = f"👤 Creator: {prefix or 'Unknown'}\n📁 File: {filename}"
+                            upload_success = safe_run(tg.upload_video(output_path, caption))
+                            if upload_success:
+                                safe_run(tg.send_log(f"✅ Successfully uploaded <code>{filename}</code>"))
+                        except Exception as e:
+                            print(f"[!] Telegram Upload Crashed: {e}", flush=True)
+                            import traceback
+                            traceback.print_exc()
                 else:
                     print(f"[!] Failed to download: {video['title']}", flush=True)
                     if tg: 
-                        def safe_run(coro):
-                            if tg.client.loop.is_running():
-                                return asyncio.run_coroutine_threadsafe(coro, tg.client.loop).result()
-                            else:
-                                return tg.client.loop.run_until_complete(coro)
-                        safe_run(tg.send_log(f"❌ Failed to download <code>{video['title']}</code>"))
+                        try:
+                            def safe_run(coro):
+                                if tg.client.loop.is_running():
+                                    return asyncio.run_coroutine_threadsafe(coro, tg.client.loop).result()
+                                else:
+                                    return tg.client.loop.run_until_complete(coro)
+                            safe_run(tg.send_log(f"❌ Failed to download <code>{video['title']}</code>"))
+                        except Exception as e:
+                            print(f"[!] Telegram Log Crashed: {e}", flush=True)
             else:
                 print(f"[!] Critical failure: Failed to resolve link for: {video['title']}. Triggering safety shutdown.", flush=True)
                 sys.exit(1) # This tells the auto_runner to wait 5 minutes

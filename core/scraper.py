@@ -7,6 +7,10 @@ import requests
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 from .downloader import resolve_monetized_link
+try:
+    from playwright_stealth import stealth
+except ImportError:
+    stealth = None
 
 BASE_URL = "https://wet3.click"
 
@@ -21,9 +25,13 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
     
     with sync_playwright() as p:
         # Full Viewport for better button detection
+        # Using Chromium (Visible Mode for Debugging)
         browser = p.chromium.launch(headless=headless, args=["--disable-blink-features=AutomationControlled", "--no-sandbox"])
         context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
         page = context.new_page()
+        if stealth:
+            try: stealth(page)
+            except: pass
         
         try:
             # Switch to 'commit' to bypass slow ad-scripts hanging the page
