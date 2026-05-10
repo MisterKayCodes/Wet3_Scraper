@@ -161,7 +161,10 @@ def upload_file_sync(file_path, caption, channel_link):
             try:
                 import imageio_ffmpeg
                 import subprocess
-                ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+                import shutil
+                # PRIORITIZE SYSTEM FFmpeg (more stable on VPS)
+                ffmpeg_exe = shutil.which("ffmpeg") or imageio_ffmpeg.get_ffmpeg_exe()
+                
                 print(f"\n[*] 🖼️ Extracting video thumbnail...", flush=True)
                 # Extract a frame at the 2-second mark
                 subprocess.run(

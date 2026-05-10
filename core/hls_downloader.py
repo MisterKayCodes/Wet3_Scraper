@@ -84,8 +84,11 @@ def download_hls_stream(m3u8_url, output_path, headers=None, cookies=None, progr
         remuxed_path = output_path.replace('.mp4', '_remux.mp4')
         try:
             import subprocess
+            import shutil
             import imageio_ffmpeg
-            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            # PRIORITIZE SYSTEM FFmpeg (more stable on VPS)
+            ffmpeg_exe = shutil.which("ffmpeg") or imageio_ffmpeg.get_ffmpeg_exe()
+            
             print(f"[*] Remuxing to proper MP4 container (Telegram-compatible)...", flush=True)
             result = subprocess.run(
                 [ffmpeg_exe, "-y", "-i", output_path, "-c", "copy",
