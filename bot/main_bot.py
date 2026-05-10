@@ -21,9 +21,41 @@ class InterceptHandler(logging.Handler):
 logging.basicConfig(handlers=[InterceptHandler()], level=logging.INFO, force=True)
 
 # --- PHASE 1: LOGGING FOUNDATION ---
-# Ensure logs directory exists and set up file logging
+# Ensure logs directory exists
 Path("logs").mkdir(exist_ok=True)
-logger.add("logs/bot.log", rotation="10 MB", retention="7 days", level="INFO", format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}")
+
+def filter_progress(record):
+    """Filters out progress bar spam from the log file, but keeps them in terminal."""
+    msg = record["message"]
+    # Skip lines that look like progress bars (contain %, [, and ]) or TQDM bars
+    if "[" in msg and "%" in msg and "]" in msg:
+        return False
+    if "%|" in msg or "seg/s]" in msg:
+        return False
+    return True
+
+# 1. File Logger: Filtered to keep it clean for the /logs command
+logger.add(
+    "logs/bot.log", 
+    rotation="10 MB", 
+    retention="7 days", 
+    level="INFO", 
+    format="{time:YYYY-MM-DD HH:mm:ss} | {message}",
+    filter=filter_progress
+)
+
+# 2. Redirect Print/Stdout to Logger so we catch everything from downloader.py
+class StreamToLogger:
+    def __init__(self, level="INFO"):
+        self.level = level
+    def write(self, buffer):
+        for line in buffer.rstrip().splitlines():
+            logger.opt(depth=1).log(self.level, line.strip())
+    def flush(self):
+        pass
+
+sys.stdout = StreamToLogger("INFO")
+sys.stderr = StreamToLogger("ERROR")
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.default import DefaultBotProperties

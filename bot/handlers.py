@@ -84,7 +84,7 @@ async def cmd_logs(message: types.Message):
     try:
         with open(log_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
-            last_lines = lines[-20:] # Get last 20 lines
+            last_lines = lines[-30:] # Get last 30 lines (clean logs only)
             log_text = "".join(last_lines)
             
         if not log_text:
