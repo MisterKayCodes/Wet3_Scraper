@@ -711,9 +711,8 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                                 print(f"[!] ⚠️ Health Alert: File is very small ({file_size/1024/1024:.2f}MB). Likely a PREVIEW.", flush=True)
                                 def safe_run_fail_msg(coro):
                                     if tg.client.loop.is_running():
-                                        return asyncio.run_coroutine_threadsafe(coro, tg.client.loop).result()
-                                    else:
-                                        return tg.client.loop.run_until_complete(coro)
+                                        # Use fire-and-forget to avoid deadlock between threads
+                                        asyncio.run_coroutine_threadsafe(coro, tg.client.loop)
                                 safe_run_fail_msg(tg.send_log(f"⚠️ <b>Session Warning:</b> High-quality download failed for <code>{filename}</code>. Site served a tiny preview. Please update cookies!"))
 
                         caption = f"👤 Creator: {prefix or 'Unknown'}\n📁 File: {filename}"
