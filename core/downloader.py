@@ -589,6 +589,18 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
         
         
         for i, video in enumerate(videos_list):
+            # --- HOT-RELOAD SESSION ---
+            # Re-read session.json every 5 items in case the user updated it via Telegram
+            if i > 0 and i % 5 == 0:
+                print(f"[*] 🔄 Hot-Reloading Session Cookies...", flush=True)
+                session_data = get_cookies_and_ua()
+                if session_data:
+                    unique_cookies = { (c['name'], c['domain']): c for c in session_data.get('cookies', []) }
+                    try:
+                        context.add_cookies(list(unique_cookies.values()))
+                        base_ua = session_data.get('user_agent', base_ua)
+                    except: pass
+
             # ROTATION: Every 15 items, completely murder the browser to flush memory leaks
             if i > 0 and i % 15 == 0:
                 print(f"[*] 🧹 Memory Flush: Hard restarting Chromium to clear RAM leak...", flush=True)
@@ -678,31 +690,44 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                 if needs_download:
                     print(f"[SUCCESS] Saved to {output_path}", flush=True)
                     
-                # --- TELEGRAM UPLOAD (Deadlock-Free) ---
-                if tg:
-                    # Resolve channel: prefer in-memory config, fall back to persisted settings
-                    channel_link = config.CHANNEL_LINK
-                    if not channel_link:
-                        try:
-                            from utils.settings_manager import load_settings
-                            channel_link = load_settings().get("target_channel", "")
-                        except: pass
-                    
-                    if not channel_link:
-                        print("[!] CHANNEL_LINK not set — skipping upload. Use /set_channel in the bot.", flush=True)
-                    else:
-                        caption = f"👤 Creator: {prefix or 'Unknown'}\n📁 File: {filename}"
-                        print(f"[*] ⏳ Starting deadlock-free upload for: {filename}", flush=True)
-                        upload_success = upload_file_sync(output_path, caption, channel_link)
-                        if upload_success:
-                            print(f"[+] ✅ Upload to Telegram successful!", flush=True)
-                            open(uploaded_flag, 'w').close()
-                            try:
-                                os.remove(output_path)
-                                print(f"[*] 🗑️ Deleted local file: {filename}", flush=True)
-                            except: pass
-                        else:
-                            print(f"[!] Upload failed for {filename}. Will retry on next run.", flush=True)
+                        # --- TELEGRAM UPLOAD (Deadlock-Free) ---
+                        if tg:
+                            # Resolve channel: prefer in-memory config, fall back to persisted settings
+                            channel_link = config.CHANNEL_LINK
+                            if not channel_link:
+                                try:
+                                    from utils.settings_manager import load_settings
+                                    channel_link = load_settings().get("target_channel", "")
+                                except: pass
+                            
+                            if not channel_link:
+                                print("[!] CHANNEL_LINK not set — skipping upload. Use /set_channel in the bot.", flush=True)
+                            else:
+                                # --- HEALTH CHECK ---
+                                # If video is tiny (< 3MB), it's likely a preview
+                                if is_video and os.path.exists(output_path):
+                                    file_size = os.path.getsize(output_path)
+                                    if file_size < 3 * 1024 * 1024:
+                                        print(f"[!] ⚠️ Health Alert: File is very small ({file_size/1024/1024:.2f}MB). Likely a PREVIEW.", flush=True)
+                                        def safe_run_fail_msg(coro):
+                                            if tg.client.loop.is_running():
+                                                return asyncio.run_coroutine_threadsafe(coro, tg.client.loop).result()
+                                            else:
+                                                return tg.client.loop.run_until_complete(coro)
+                                        safe_run_fail_msg(tg.send_log(f"⚠️ <b>Session Warning:</b> High-quality download failed for <code>{filename}</code>. Site served a tiny preview. Please update cookies!"))
+
+                                caption = f"👤 Creator: {prefix or 'Unknown'}\n📁 File: {filename}"
+                                print(f"[*] ⏳ Starting deadlock-free upload for: {filename}", flush=True)
+                                upload_success = upload_file_sync(output_path, caption, channel_link)
+                                if upload_success:
+                                    print(f"[+] ✅ Upload to Telegram successful!", flush=True)
+                                    open(uploaded_flag, 'w').close()
+                                    try:
+                                        os.remove(output_path)
+                                        print(f"[*] 🗑️ Deleted local file: {filename}", flush=True)
+                                    except: pass
+                                else:
+                                    print(f"[!] Upload failed for {filename}. Will retry on next run.", flush=True)
             else:
                 print(f"[!] Failed to download: {video['title']}", flush=True)
                 if tg:

@@ -134,6 +134,36 @@ async def cmd_scrape(message: types.Message, orchestrator, telethon_worker, bot:
     else:
         await status_msg.edit_text(f"❌ **Error:** {result.get('message')}")
 
+@router.message(Command("set_session"))
+async def cmd_set_session(message: types.Message):
+    """
+    Updates the session.json file on the VPS remotely.
+    The user can paste the JSON content after the command.
+    """
+    import json
+    # Strip command and get the JSON string
+    json_text = message.text.replace("/set_session", "").strip()
+    
+    if not json_text:
+        await message.answer("âš ï¸  <b>Usage:</b>\n<code>/set_session [PASTE_JSON_HERE]</code>\n\n<i>Get the JSON from your local capture_session.py script.</i>")
+        return
+
+    try:
+        # Validate JSON structure
+        data = json.loads(json_text)
+        if "cookies" not in data or "user_agent" not in data:
+            raise ValueError("JSON must contain 'cookies' and 'user_agent' keys.")
+            
+        # Save to the data directory
+        session_path = os.path.join("data", "session.json")
+        os.makedirs("data", exist_ok=True)
+        with open(session_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+            
+        await message.answer("âœ… <b>Session Updated!</b>\nThe scraper will pick up the new cookies automatically for the next batch.")
+    except Exception as e:
+        await message.answer(f"â Œ <b>Invalid Session Data:</b>\n<code>{str(e)}</code>")
+
 @router.callback_query(F.data.startswith("dl:"))
 async def handle_download(callback: types.CallbackQuery, orchestrator, telethon_worker, bot: Bot):
     _, profile_name, mode = callback.data.split(":")

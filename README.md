@@ -2,6 +2,25 @@
 
 This project implements a robust, modular pipeline for automating the extraction and assembly of media content from wet3.click. The system is designed to handle aggressive ad-walls, dynamic pagination, and fragmented HLS video streams, providing a seamless interface via a Telegram bot.
 
+## 🛠 Troubleshooting & Anti-Bot Bypass
+
+If the bot encounters a "Blank Screen" or "Timeout" during scraping:
+
+### 1. Manual Session Hijacking (Recommended)
+The most reliable way to bypass ad-walls is to "lend" your human session to the bot.
+1. Run the capture tool: `python scripts/capture_session.py`
+2. A browser window will open. Log in manually and solve any challenges.
+3. Press Enter in the terminal to save the session.
+4. Restart the bot: `python bot/main_bot.py`
+
+### 2. Visible Debugging
+The bot is currently set to **Visible Mode** (`headless=False`) in `bot/handlers.py`. This allows you to watch exactly what is happening. If it's working well, you can switch it back to `True` for background operation.
+
+### 3. VPS Deployment
+On a VPS, ensure you have a "fake screen" (Xvfb) or use a proxy like Cloudflare WARP.
+- Install WARP: `config.USE_PROXY = True`
+- Run via Xvfb: `xvfb-run python bot/main_bot.py`
+
 ## Project Architecture
 
 The codebase follows a service-oriented architecture to ensure maintainability and scalability.
