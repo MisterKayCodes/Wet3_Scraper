@@ -584,6 +584,10 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
             except: pass
         page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
+        # --- MEMORY OPTIMIZATION: Block heavy assets ---
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "font", "stylesheet"] else route.continue_())
+        
+        
         for i, video in enumerate(videos_list):
             # ROTATION: Every 5 items, swap identity and refresh page
             if i > 0 and i % 5 == 0:
@@ -595,6 +599,7 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                     try: stealth(page)
                     except: pass
                 page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "font", "stylesheet"] else route.continue_())
                 time.sleep(random.randint(5, 10))
 
             count = start_index + i

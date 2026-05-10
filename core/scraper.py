@@ -38,6 +38,10 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
         if stealth:
             try: stealth(page)
             except: pass
+            
+        # --- MEMORY OPTIMIZATION: Block heavy assets ---
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "font", "stylesheet"] else route.continue_())
+        
         
         try:
             # Switch to 'commit' to bypass slow ad-scripts hanging the page
