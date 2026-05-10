@@ -91,7 +91,11 @@ def decode_token(page, monetized_url, status_callback=None):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
         }
-        res = requests.get(monetized_url, headers=headers, timeout=15)
+        req_kwargs = {"headers": headers, "timeout": 15}
+        if config.USE_PROXY:
+            req_kwargs["proxies"] = {"http": config.PROXY_SERVER, "https": config.PROXY_SERVER}
+        
+        res = requests.get(monetized_url, **req_kwargs)
         if res.status_code == 200:
             import re
             # Force the regex to ONLY match tokens starting with 'eyJ' (which is Base64 for '{"')
@@ -465,8 +469,13 @@ def download_via_requests(url, browser_cookies, user_agent, output_path, referre
             'Origin': ref.rstrip('/') if ref else None
         }
         
+        req_kwargs = {"headers": headers, "cookies": cookie_dict, "stream": True, "timeout": 60}
+        import config
+        if config.USE_PROXY:
+            req_kwargs["proxies"] = {"http": config.PROXY_SERVER, "https": config.PROXY_SERVER}
+
         try:
-            with requests.get(url, headers=headers, cookies=cookie_dict, stream=True, timeout=60) as r:
+            with requests.get(url, **req_kwargs) as r:
                 if r.status_code == 403:
                     print(f"[!] 403 Forbidden with Referer: {ref}. Trying next...", flush=True)
                     continue
@@ -547,10 +556,13 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
     
     with sync_playwright() as p, tqdm(total=len(videos_list), desc="Overall Progress", unit="item") as pbar:
         # Using Chromium (Visible Mode for Debugging)
-        browser = p.chromium.launch(
-            headless=headless,
-            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"]
-        )
+        # --- ANTI-BOT PROXY INTEGRATION ---
+        launch_kwargs = {"headless": headless, "args": ["--disable-blink-features=AutomationControlled", "--no-sandbox"]}
+        if config.USE_PROXY:
+            launch_kwargs["proxy"] = {"server": config.PROXY_SERVER}
+            print(f"[*] 🛡️ Launching Downloader via WARP Proxy: {config.PROXY_SERVER}", flush=True)
+
+        browser = p.chromium.launch(**launch_kwargs)
         context = browser.new_context(user_agent=base_ua)
         
         # Inject cookies if we have them

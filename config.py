@@ -18,6 +18,10 @@ DEFAULT_HEADLESS = True  # Set to False for local debugging
 DOWNLOAD_DIR = "videos"
 DATA_DIR = "data"
 
+# Anti-Bot Settings (Cloudflare WARP or proxies)
+USE_PROXY = False  # Set to True on VPS after installing WARP
+PROXY_SERVER = "socks5://127.0.0.1:40000"  # Default Cloudflare WARP proxy port
+
 # Validation
 if not API_ID or not API_HASH:
     print("[!] Warning: API_ID or API_HASH not found in environment. Telegram features will be disabled.")

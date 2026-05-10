@@ -9,8 +9,14 @@ def download_hls_stream(m3u8_url, output_path, headers=None, cookies=None, progr
     Pure Python alternative to ffmpeg.
     """
     print(f"[*] Starting HLS download (Pure Python Stitcher) for: {os.path.basename(output_path)}", flush=True)
+    
+    import config
+    req_kwargs = {"headers": headers, "cookies": cookies, "timeout": 30}
+    if config.USE_PROXY:
+        req_kwargs["proxies"] = {"http": config.PROXY_SERVER, "https": config.PROXY_SERVER}
+
     try:
-        r = requests.get(m3u8_url, headers=headers, cookies=cookies, timeout=30)
+        r = requests.get(m3u8_url, **req_kwargs)
         r.raise_for_status()
         lines = r.text.splitlines()
         
@@ -45,7 +51,10 @@ def download_hls_stream(m3u8_url, output_path, headers=None, cookies=None, progr
                 success = False
                 for attempt in range(3):
                     try:
-                        seg_r = requests.get(seg_url, headers=headers, cookies=cookies, timeout=25)
+                        seg_kwargs = {"headers": headers, "cookies": cookies, "timeout": 25}
+                        if config.USE_PROXY:
+                            seg_kwargs["proxies"] = {"http": config.PROXY_SERVER, "https": config.PROXY_SERVER}
+                        seg_r = requests.get(seg_url, **seg_kwargs)
                         seg_r.raise_for_status()
                         f.write(seg_r.content)
                         success = True

@@ -25,8 +25,14 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
     
     with sync_playwright() as p:
         # Full Viewport for better button detection
-        # Using Chromium (Visible Mode for Debugging)
-        browser = p.chromium.launch(headless=headless, args=["--disable-blink-features=AutomationControlled", "--no-sandbox"])
+        # --- ANTI-BOT PROXY INTEGRATION ---
+        import config
+        launch_kwargs = {"headless": headless, "args": ["--disable-blink-features=AutomationControlled", "--no-sandbox"]}
+        if config.USE_PROXY:
+            launch_kwargs["proxy"] = {"server": config.PROXY_SERVER}
+            print(f"[*] 🛡️ Launching Scraper via WARP Proxy: {config.PROXY_SERVER}", flush=True)
+
+        browser = p.chromium.launch(**launch_kwargs)
         context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
         page = context.new_page()
         if stealth:
