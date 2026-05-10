@@ -589,11 +589,19 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
         
         
         for i, video in enumerate(videos_list):
-            # ROTATION: Every 5 items, swap identity and refresh page
-            if i > 0 and i % 5 == 0:
-                print(f"[*] Camouflage rotation: Refreshing identity...", flush=True)
-                page.close()
-                context.set_extra_http_headers({"User-Agent": random.choice(user_agents)})
+            # ROTATION: Every 15 items, completely murder the browser to flush memory leaks
+            if i > 0 and i % 15 == 0:
+                print(f"[*] 🧹 Memory Flush: Hard restarting Chromium to clear RAM leak...", flush=True)
+                try: browser.close()
+                except: pass
+                
+                browser = p.chromium.launch(**launch_kwargs)
+                context = browser.new_context(user_agent=random.choice(user_agents))
+                
+                if session_data:
+                    try: context.add_cookies(list(unique_cookies.values()))
+                    except: pass
+                    
                 page = context.new_page()
                 if stealth:
                     try: stealth(page)
