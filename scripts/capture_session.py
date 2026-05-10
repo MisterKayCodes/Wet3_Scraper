@@ -26,8 +26,9 @@ def capture_session():
         )
         page = context.new_page()
 
-        print("[*] Navigating to wet3.click...")
-        page.goto("https://wet3.click/")
+        print("[*] Navigating to wet3.click (Increased timeout)...")
+        # Increase timeout to 90s and wait for DOM instead of full load to bypass slow ads
+        page.goto("https://wet3.click/", timeout=90000, wait_until="domcontentloaded")
         
         print("\n✅ ACTION REQUIRED:")
         print("1. Log in to your account if needed.")
