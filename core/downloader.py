@@ -15,7 +15,8 @@ except ImportError:
 from tqdm import tqdm
 from utils.browser_utils import bypass_modal
 from .hls_downloader import download_hls_stream
-from .telegram_utils import TelegramService
+from .telegram_utils import TelegramService, upload_file_sync
+import config
 
 # Fix for Windows console unicode issues
 import sys
@@ -93,9 +94,10 @@ def decode_token(page, monetized_url, status_callback=None):
         res = requests.get(monetized_url, headers=headers, timeout=15)
         if res.status_code == 200:
             import re
-            token_match = re.search(r'token=([a-zA-Z0-9%+/=]+)', res.text)
+            # Force the regex to ONLY match tokens starting with 'eyJ' (which is Base64 for '{"')
+            token_match = re.search(r'token=(eyJ[a-zA-Z0-9%+/=]+)', res.text)
             if not token_match:
-                token_match = re.search(r'"token":"([a-zA-Z0-9%+/=]+)"', res.text)
+                token_match = re.search(r'"token":"(eyJ[a-zA-Z0-9%+/=]+)"', res.text)
                 
             if token_match:
                 token_b64 = urllib.parse.unquote(token_match.group(1))
@@ -107,6 +109,10 @@ def decode_token(page, monetized_url, status_callback=None):
                         return data['u']
                 except Exception as e:
                     print(f"[-] Ghost Bypass decode failed: {e}", flush=True)
+            else:
+                print("[-] Ghost Bypass: Token not found in HTML (Could be a Cloudflare challenge page)", flush=True)
+        else:
+            print(f"[-] Ghost Bypass: Blocked by server (HTTP {res.status_code})", flush=True)
     except Exception as e:
         print(f"[-] Ghost Bypass failed: {e}", flush=True)
 
@@ -119,8 +125,8 @@ def decode_token(page, monetized_url, status_callback=None):
             # Use domcontentloaded for speed on redirect-heavy pages
             # Use a realistic referer to look human
             referer = "https://wet3.click/user/chika1"
-            # Reduced timeout from 90s to 45s for smarter retries
-            page.goto(monetized_url, wait_until="commit", timeout=45000, referer=referer)
+            # Increased timeout to 90s to give Cloudflare challenge pages time to load
+            page.goto(monetized_url, wait_until="domcontentloaded", timeout=90000, referer=referer)
             time.sleep(5) # Wait for redirects to settle
             bypass_modal(page)
             
@@ -169,10 +175,10 @@ def decode_token(page, monetized_url, status_callback=None):
             # --- PHASE 3: SOURCE EXTRACTION (Search for tokens in JS/HTML) ---
             content = page.content()
             import re
-            # Look for token=... or "token":"..."
-            token_match = re.search(r'token=([a-zA-Z0-9%+/=]+)', content)
+            # Look for strictly valid Base64 JSON tokens
+            token_match = re.search(r'token=(eyJ[a-zA-Z0-9%+/=]+)', content)
             if not token_match:
-                token_match = re.search(r'"token":"([a-zA-Z0-9%+/=]+)"', content)
+                token_match = re.search(r'"token":"(eyJ[a-zA-Z0-9%+/=]+)"', content)
             
             if token_match:
                 token_b64 = urllib.parse.unquote(token_match.group(1))
@@ -205,6 +211,17 @@ def decode_token(page, monetized_url, status_callback=None):
                 page.screenshot(path=f"debug/debug_fail_res_{attempt+1}.png")
                 print(f"[*] Debug screenshot saved: debug/debug_fail_res_{attempt+1}.png", flush=True)
             except: pass
+            
+            # Smart Auto-Refresh: Clear Cloudflare by visiting the root homepage
+            if attempt < 2:
+                print("[*] 🔄 Performing Anti-Bot Session Refresh (Clearing Cloudflare)...", flush=True)
+                try:
+                    page.goto("https://wet3.click/", timeout=30000, wait_until="domcontentloaded")
+                    time.sleep(3)
+                    bypass_modal(page)
+                except Exception as refresh_err:
+                    print(f"    [!] Refresh minor error (ignored): {refresh_err}", flush=True)
+            
             time.sleep(5)
             
     return None
@@ -583,68 +600,96 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                 filename = f"{clean_title}_{count}{ext}"
             
             output_path = os.path.join(output_dir, filename)
+            uploaded_flag = f"{output_path}.uploaded"
             
-            # --- SKIP IF EXISTS ---
-            if os.path.exists(output_path) and os.path.getsize(output_path) > 2048:
-                print(f"[*] Skipping already downloaded: {filename}", flush=True)
+            # --- SMART RESUME LOGIC ---
+            if os.path.exists(uploaded_flag):
+                print(f"[*] Skipping already fully processed/uploaded: {filename}", flush=True)
                 continue
+                
+            needs_download = True
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 2048:
+                print(f"[*] File already downloaded but not uploaded. Resuming upload for: {filename}", flush=True)
+                needs_download = False
 
             print(f"\n[{count}/{len(videos_list) + start_index - 1}] Task: {video['title']} ({video['type'].upper()})", flush=True)
             if status_callback: 
                 status_callback(f"⬇️ <b>Processing:</b> {count}/{len(videos_list)}\n📂 <code>{filename}</code>")
             
-            # 1. Resolve Link (using shared page)
-            sd_link = decode_token(page, video['link'], status_callback=status_callback)
-            
-            if sd_link:
-                # Use Browser Capture for Wasabi or Host links (send.now)
-                is_direct = False
-                if "ucarecdn.com" in sd_link or any(ext in sd_link.lower() for ext in ['.mp4', '.m4v', '.mov']):
-                    if "wasabisys.com" not in sd_link: # Wasabi is NEVER direct
-                        is_direct = True
+            # --- PHASE 1: DOWNLOAD (If needed) ---
+            success = False
+            if needs_download:
+                # 1. Resolve Link (using shared page)
+                sd_link = decode_token(page, video['link'], status_callback=status_callback)
                 
-                if is_direct:
-                    print(f"[+] Downloading DIRECT link...", flush=True)
-                    success = download_via_requests(sd_link, context.cookies(), base_ua, output_path, referrer="https://nelb6o.wet3.click/")
+                if sd_link:
+                    # --- SMART ROUTING ---
+                    is_hls = ".m3u8" in sd_link.lower()
+                    is_direct = False
+                    if not is_hls:
+                        if "ucarecdn.com" in sd_link or any(ext in sd_link.lower() for ext in ['.mp4', '.m4v', '.mov']):
+                            if "wasabisys.com" not in sd_link: # Wasabi is NEVER direct
+                                is_direct = True
+                    
+                    if is_hls:
+                        # Route directly to HLS stitcher — never use browser for a stream URL
+                        print(f"[*] Direct HLS stream detected. Stitching...", flush=True)
+                        cookies = {c['name']: c['value'] for c in context.cookies()}
+                        success = download_hls_stream(sd_link, output_path, headers={'User-Agent': base_ua}, cookies=cookies, progress_callback=progress_callback)
+                    elif is_direct:
+                        print(f"[+] Downloading DIRECT link...", flush=True)
+                        success = download_via_requests(sd_link, context.cookies(), base_ua, output_path, referrer="https://nelb6o.wet3.click/")
+                    else:
+                        print(f"[*] Using Browser Capture for: {sd_link}", flush=True)
+                        success = download_video_with_capture(context, sd_link, output_path, progress_callback=progress_callback, status_callback=status_callback)
                 else:
-                    print(f"[*] Using Browser Capture for: {sd_link}", flush=True)
-                    success = download_video_with_capture(context, sd_link, output_path, progress_callback=progress_callback, status_callback=status_callback)
-                
-                if success:
-                    print(f"[SUCCESS] Saved to {output_path}", flush=True)
-                    # --- TELEGRAM UPLOAD ---
-                    if tg:
-                        try:
-                            def safe_run(coro):
-                                if tg.client.loop.is_running():
-                                    # Added a strict 3-minute timeout so Telegram cannot freeze the bot!
-                                    return asyncio.run_coroutine_threadsafe(coro, tg.client.loop).result(timeout=180)
-                                else:
-                                    return tg.client.loop.run_until_complete(coro)
-                                    
-                            caption = f"👤 Creator: {prefix or 'Unknown'}\n📁 File: {filename}"
-                            upload_success = safe_run(tg.upload_video(output_path, caption))
-                            if upload_success:
-                                safe_run(tg.send_log(f"✅ Successfully uploaded <code>{filename}</code>"))
-                        except Exception as e:
-                            print(f"[!] Telegram Upload Crashed: {e}", flush=True)
-                            import traceback
-                            traceback.print_exc()
-                else:
-                    print(f"[!] Failed to download: {video['title']}", flush=True)
-                    if tg: 
-                        try:
-                            def safe_run(coro):
-                                if tg.client.loop.is_running():
-                                    return asyncio.run_coroutine_threadsafe(coro, tg.client.loop).result()
-                                else:
-                                    return tg.client.loop.run_until_complete(coro)
-                            safe_run(tg.send_log(f"❌ Failed to download <code>{video['title']}</code>"))
-                        except Exception as e:
-                            print(f"[!] Telegram Log Crashed: {e}", flush=True)
+                    print(f"[!] Critical failure: Failed to resolve link for: {video['title']}. Skipping to next video.", flush=True)
+                    continue # Skip this video instead of crashing the whole bot
             else:
-                print(f"[!] Critical failure: Failed to resolve link for: {video['title']}. Triggering safety shutdown.", flush=True)
-                sys.exit(1) # This tells the auto_runner to wait 5 minutes
+                success = True # We skipped download, so pretend it was successful so we can upload
+            
+            # --- PHASE 2: UPLOAD ---
+            if success:
+                if needs_download:
+                    print(f"[SUCCESS] Saved to {output_path}", flush=True)
+                    
+                # --- TELEGRAM UPLOAD (Deadlock-Free) ---
+                if tg:
+                    # Resolve channel: prefer in-memory config, fall back to persisted settings
+                    channel_link = config.CHANNEL_LINK
+                    if not channel_link:
+                        try:
+                            from utils.settings_manager import load_settings
+                            channel_link = load_settings().get("target_channel", "")
+                        except: pass
+                    
+                    if not channel_link:
+                        print("[!] CHANNEL_LINK not set — skipping upload. Use /set_channel in the bot.", flush=True)
+                    else:
+                        caption = f"👤 Creator: {prefix or 'Unknown'}\n📁 File: {filename}"
+                        print(f"[*] ⏳ Starting deadlock-free upload for: {filename}", flush=True)
+                        upload_success = upload_file_sync(output_path, caption, channel_link)
+                        if upload_success:
+                            print(f"[+] ✅ Upload to Telegram successful!", flush=True)
+                            open(uploaded_flag, 'w').close()
+                            try:
+                                os.remove(output_path)
+                                print(f"[*] 🗑️ Deleted local file: {filename}", flush=True)
+                            except: pass
+                        else:
+                            print(f"[!] Upload failed for {filename}. Will retry on next run.", flush=True)
+            else:
+                print(f"[!] Failed to download: {video['title']}", flush=True)
+                if tg:
+                    try:
+                        def safe_run_fail(coro):
+                            if tg.client.loop.is_running():
+                                return asyncio.run_coroutine_threadsafe(coro, tg.client.loop).result()
+                            else:
+                                return tg.client.loop.run_until_complete(coro)
+                        safe_run_fail(tg.send_log(f"❌ Failed to download <code>{video['title']}</code>"))
+                    except Exception as e:
+                        print(f"[!] Telegram Log Crashed: {e}", flush=True)
             
             pbar.update(1)
             # Random jitter cooldown (20 to 45 seconds) to avoid rate limits

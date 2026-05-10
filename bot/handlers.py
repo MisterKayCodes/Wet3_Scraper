@@ -155,14 +155,22 @@ async def handle_download(callback: types.CallbackQuery, orchestrator, telethon_
     
     await callback.message.edit_text(ui.get_download_progress(profile_name, mode, 0, 0, 100)) # Init bar
     
+    last_update_time = [0] # Use a list so we can modify it inside the nested function
+    
     def progress_callback(current, total):
-        percentage = (current / total) * 100
-        text = ui.get_download_progress(profile_name, mode, percentage, current, total)
-        # Use bot.edit_message_text for live updates safely on the main loop
-        asyncio.run_coroutine_threadsafe(
-            bot.edit_message_text(text, chat_id=callback.message.chat.id, message_id=callback.message.message_id),
-            asyncio.get_event_loop()
-        )
+        import time
+        now = time.time()
+        
+        # THROTTLE: Only update Telegram once every 2 seconds, OR when 100% finished
+        if now - last_update_time[0] > 2.0 or current == total:
+            last_update_time[0] = now
+            percentage = (current / total) * 100
+            text = ui.get_download_progress(profile_name, mode, percentage, current, total)
+            # Use bot.edit_message_text for live updates safely on the main loop
+            asyncio.run_coroutine_threadsafe(
+                bot.edit_message_text(text, chat_id=callback.message.chat.id, message_id=callback.message.message_id),
+                asyncio.get_event_loop()
+            )
 
     def status_callback(text):
         # We only update status if it's not a progress bar update (to avoid overlapping)
