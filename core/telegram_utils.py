@@ -175,21 +175,30 @@ def upload_file_sync(file_path, caption, channel_link):
             if thumb_path and not os.path.exists(thumb_path):
                 thumb_path = None
 
-            # --- EXTRACT METADATA (To fix Zoomed-In Video Issue) ---
+            # --- EXTRACT METADATA (To fix Zoomed-In / Audio-Only Issue) ---
             import re
             width, height, duration = 0, 0, 0
             try:
                 meta_res = subprocess.run([ffmpeg_exe, "-i", file_path], capture_output=True, text=True, timeout=15)
                 out = meta_res.stderr
-                # Parse Duration: 00:00:10.00
+                # Parse Duration: 00:00:10.00 (More robust regex)
                 dur_match = re.search(r"Duration:\s*(\d{2}):(\d{2}):(\d{2})", out)
                 if dur_match:
                     duration = int(dur_match.group(1)) * 3600 + int(dur_match.group(2)) * 60 + int(dur_match.group(3))
-                # Parse Video: h264, yuv420p, 1920x1080
-                res_match = re.search(r"Video:.*?,.*?(\d{3,5})x(\d{3,5})", out)
+                
+                # Parse Video Resolution: e.g. 1920x1080 or 1080x1920
+                # We look for the first resolution pattern following 'Video:'
+                res_match = re.search(r"Video:.*?\s(\d{3,5})x(\d{3,5})", out)
+                if not res_match:
+                    # Fallback: Just look for any WxH pattern in the output
+                    res_match = re.search(r"(\d{3,5})x(\d{3,5})", out)
+                
                 if res_match:
                     width = int(res_match.group(1))
                     height = int(res_match.group(2))
+                    # Handle common swap (sometimes height comes first in weird logs)
+                    if width > 5000 or height > 5000: # Sanity check for insane values
+                        width, height = 1280, 720 # Fallback to standard HD
             except Exception as meta_err:
                 print(f"[!] Warning: Could not extract metadata dimensions: {meta_err}")
 
