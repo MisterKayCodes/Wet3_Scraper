@@ -5,7 +5,7 @@ def bypass_modal(page):
     print("[*] Checking for modals/overlays...", flush=True)
     for i in range(3): # Try up to 3 times
         try:
-            # 1. Try clicking common close button selectors
+            # 1. Try clicking common close button selectors (and Cloudflare Checkbox)
             selectors = [
                 "[aria-label='Close']",
                 ".close",
@@ -22,6 +22,16 @@ def bypass_modal(page):
                     print(f"[+] Clicking modal closer: {selector}", flush=True)
                     page.click(selector)
                     time.sleep(1)
+            
+            # --- CLOUDFLARE TURNSTILE SOLVER ---
+            try:
+                # Cloudflare check boxes are inside iframes
+                for frame in page.frames:
+                    if frame.locator(".cf-turnstile-wrapper").is_visible() or frame.locator("input[type='checkbox']").is_visible():
+                        print("[+] Found Cloudflare Checkbox. Attempting click...", flush=True)
+                        frame.locator("input[type='checkbox'], .cf-turnstile-wrapper").first.click()
+                        time.sleep(3)
+            except: pass
             
             # 2. Specific for wet3 'Unlock Feed' buttons that are ad-walls
             if page.is_visible("button:has-text('UNLOCK FEED')"):

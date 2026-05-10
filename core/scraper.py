@@ -43,7 +43,13 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
             # Switch to 'commit' to bypass slow ad-scripts hanging the page
             page.goto(target_url, wait_until="commit", timeout=90000)
             print("[*] Initial commit reached. Waiting for dynamic content...", flush=True)
-            time.sleep(15) # Manual wait for the UI to settle
+            time.sleep(5) 
+            
+            # --- BYPASS CLOUDFLARE CHALLENGE ---
+            from utils.browser_utils import bypass_modal
+            bypass_modal(page)
+            time.sleep(10) # Wait for the actual profile to load after bypass
+            
             
             def get_page_evidence():
                 try:
