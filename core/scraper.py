@@ -41,8 +41,8 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
                 print("[*] 🛡️ Stealth mode activated.", flush=True)
             except: pass
             
-        # --- MEMORY OPTIMIZATION: Block heavy assets ---
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "font", "stylesheet"] else route.continue_())
+        # --- MEMORY OPTIMIZATION: Block images and fonts (but NOT stylesheets to avoid ad-block detection) ---
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "font"] else route.continue_())
         
         
         try:
