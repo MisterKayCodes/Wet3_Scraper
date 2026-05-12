@@ -11,17 +11,20 @@ def bypass_modal(page):
                 ".close",
                 "button:has-text('X')",
                 "button:has-text('Understand')",
+                "button:has-text('I Understand')",
                 "button:has-text('Close')",
                 "button:has-text('Understood')",
                 ".modal-close",
                 ".close-modal",
-                "button:has-text('UNLOCK FEED')"
+                "button:has-text('UNLOCK FEED')",
+                ".btn-close",
+                ".modal-content button"
             ]
             for selector in selectors:
                 if page.is_visible(selector):
                     print(f"[+] Clicking modal closer: {selector}", flush=True)
                     page.click(selector)
-                    time.sleep(1)
+                    time.sleep(2) # Give it time to fade out
             
             # --- CLOUDFLARE TURNSTILE SOLVER ---
             try:

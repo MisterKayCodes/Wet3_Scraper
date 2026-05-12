@@ -44,15 +44,15 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
         
         
         try:
-            # Switch to 'commit' to bypass slow ad-scripts hanging the page
-            page.goto(target_url, wait_until="commit", timeout=90000)
-            print("[*] Initial commit reached. Waiting for dynamic content...", flush=True)
-            time.sleep(5) 
+            # Use 'domcontentloaded' for a more stable base than 'commit'
+            page.goto(target_url, wait_until="domcontentloaded", timeout=90000)
+            print("[*] Page loaded. Waiting for dynamic content and modals...", flush=True)
+            time.sleep(8) 
             
-            # --- BYPASS CLOUDFLARE CHALLENGE ---
             from utils.browser_utils import bypass_modal
             bypass_modal(page)
-            time.sleep(10) # Wait for the actual profile to load after bypass
+            print("[*] Modal bypassed. Waiting 15s for media cards to populate...", flush=True)
+            time.sleep(15) # Wait longer for the actual profile to load after bypass
             
             
             def get_page_evidence():
@@ -71,17 +71,33 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
                 if status_callback: status_callback(f"📄 <b>Processing Page:</b> {current_p} of {total_p}")
                 print(f"\n[*] --- PROCESSING PAGE {current_p} ---", flush=True)
                 
-                # Scroll to reveal content
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
-                time.sleep(3)
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                time.sleep(3)
+                # STEP-WISE SCROLLING (More reliable for lazy-loading)
+                print(f"[*] Scrolling to reveal items...", flush=True)
+                for percent in [0.25, 0.5, 0.75, 1.0]:
+                    page.evaluate(f"window.scrollTo(0, document.body.scrollHeight * {percent})")
+                    time.sleep(2)
                 
-                html = page.content()
-                soup = BeautifulSoup(html, "html.parser")
-                links = soup.find_all("a", href=re.compile(r"swipe|get-monetized-link"))
+                # Final wait for items to render
+                time.sleep(5)
                 
                 page_items = 0
+                
+                # --- RETRY LOGIC IF 0 ITEMS FOUND ---
+                for attempt in range(2):
+                    html = page.content()
+                    soup = BeautifulSoup(html, "html.parser")
+                    links = soup.find_all("a", href=re.compile(r"swipe|get-monetized-link"))
+                    
+                    if len(links) > 0:
+                        break
+                    if attempt == 0:
+                        print("[!] Found 0 items. Waiting 10s for a second look...", flush=True)
+                        time.sleep(10)
+                        page.evaluate("window.scrollTo(0, 0)") # Scroll up and down to wake up JS
+                        time.sleep(2)
+                        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        time.sleep(3)
+                
                 for link_tag in links:
                     link = link_tag['href']
                     if not link.startswith("http"): link = BASE_URL + link
