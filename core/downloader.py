@@ -527,6 +527,15 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
         
     # Initialize Telegram Service & PRE-RESOLVE CHANNEL
     tg = tg_service
+    
+    # 1. Get the channel link from config or settings
+    channel_link = config.CHANNEL_LINK
+    if not channel_link:
+        try:
+            from utils.settings_manager import load_settings
+            channel_link = load_settings().get("target_channel", "")
+        except: pass
+
     resolved_channel_id = channel_link # Default to the link
     if not tg and os.getenv("SESSION_STRING"):
         try:
