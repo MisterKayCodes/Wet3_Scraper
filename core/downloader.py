@@ -664,9 +664,14 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                     is_hls = ".m3u8" in sd_link.lower()
                     is_direct = False
                     if not is_hls:
-                        # Include images in direct download list
+                        # Include images and known media CDNs in direct download list
                         direct_exts = ['.mp4', '.m4v', '.mov', '.jpg', '.jpeg', '.png', '.webp']
-                        if any(ext in sd_link.lower() for ext in direct_exts):
+                        direct_domains = ['ucarecdn.com', 'allaccessfans.co', 'b-cdn.net']
+                        
+                        is_media_url = any(ext in sd_link.lower() for ext in direct_exts)
+                        is_media_domain = any(domain in sd_link.lower() for domain in direct_domains)
+                        
+                        if is_media_url or is_media_domain:
                             if "wasabisys.com" not in sd_link: # Wasabi is NEVER direct
                                 is_direct = True
                     
