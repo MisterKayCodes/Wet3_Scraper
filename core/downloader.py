@@ -761,8 +761,22 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                         print(f"[!] Telegram Log Crashed: {e}", flush=True)
             
             pbar.update(1)
-            # Random jitter cooldown (20 to 45 seconds) to avoid rate limits
-            jitter = random.randint(20, 45)
+            
+            # --- SMART PULSING (Human-like delays to avoid bans) ---
+            # 1. Base Cooldown (60-120 seconds) - Much safer than 30s
+            jitter = random.randint(60, 120)
+            
+            # 2. Random "Distraction" (5% chance of a 3-5 minute break)
+            if random.random() < 0.05:
+                print("[*] ☕ Human simulation: Taking a random 'distraction' break...", flush=True)
+                jitter = random.randint(180, 300)
+            
+            # 3. Mandatory "Batch Break" every 15 files (5-8 minutes)
+            if (i + 1) % 15 == 0:
+                print(f"[*] 🥪 Batch of 15 complete: Taking a mandatory 8-minute rest for account safety...", flush=True)
+                jitter = random.randint(480, 600)
+
+            print(f"[*] ⏳ Cooldown: {jitter}s before next task...", flush=True)
             time.sleep(jitter)
             
         browser.close()
