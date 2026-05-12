@@ -525,20 +525,24 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         
-    # Initialize Telegram Service if configured
+    # Initialize Telegram Service & PRE-RESOLVE CHANNEL
     tg = tg_service
+    resolved_channel_id = channel_link # Default to the link
     if not tg and os.getenv("SESSION_STRING"):
         try:
             tg = TelegramService()
-            # Use the client's own loop to avoid 'loop change' errors
             tg.client.loop.run_until_complete(tg.start())
-            tg.client.loop.run_until_complete(tg.resolve_channel(os.getenv("CHANNEL_LINK")))
-            tg.client.loop.run_until_complete(tg.send_log(f"🚀 Starting download queue for {len(videos_list)} items in <b>{output_dir}</b>"))
+            await_channel = tg.client.loop.run_until_complete(tg.resolve_channel(channel_link))
+            if tg.target_channel:
+                # We got a permanent ID or username! Use this instead of the invite link.
+                resolved_channel_id = tg.target_channel
+            tg.client.loop.run_until_complete(tg.send_log(f"🚀 Starting download queue for {len(videos_list)} items..."))
         except Exception as e:
             print(f"[!] Telegram init failed: {e}", flush=True)
             tg = None
 
     print(f"[*] Starting optimized download queue ({'HEADLESS' if headless else 'VISIBLE'}) for {len(videos_list)} items...", flush=True)
+    print(f"[*] Target Channel: {resolved_channel_id}", flush=True)
     
     import random
     user_agents = [
@@ -724,7 +728,7 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
 
                         caption = f"👤 Creator: {prefix or 'Unknown'}\n📁 File: {filename}"
                         print(f"[*] ⏳ Starting deadlock-free upload for: {filename}", flush=True)
-                        upload_success = upload_file_sync(output_path, caption, channel_link)
+                        upload_success = upload_file_sync(output_path, caption, resolved_channel_id)
                         if upload_success:
                             print(f"[+] ✅ Upload to Telegram successful!", flush=True)
                             open(uploaded_flag, 'w').close()
