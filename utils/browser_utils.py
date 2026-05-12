@@ -42,10 +42,15 @@ def bypass_modal(page):
                  page.click("button:has-text('UNLOCK FEED')")
                  time.sleep(1)
 
-            # 3. Check for overlays that prevent clicking (JS removal)
+            # 3. Check for overlays that prevent clicking (JS Hiding - SAFER THAN REMOVING)
             page.evaluate('''() => {
                 const overlays = document.querySelectorAll('.modal, .overlay, .popup, [class*="modal"], [class*="overlay"]');
-                overlays.forEach(el => el.remove());
+                overlays.forEach(el => {
+                    // Only hide if it's likely a real popup (not the whole page)
+                    if (el.offsetWidth < window.innerWidth * 0.9 || el.offsetHeight < window.innerHeight * 0.9) {
+                        el.style.display = 'none';
+                    }
+                });
                 document.body.style.overflow = 'auto'; // Re-enable scrolling if blocked
             }''')
         except:
