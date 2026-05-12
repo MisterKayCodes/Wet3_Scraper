@@ -156,8 +156,13 @@ def upload_file_sync(file_path, caption, channel_link):
             else:
                 target = await client.get_entity(channel_link)
             
-            # --- EXTRACT THUMBNAIL ---
-            thumb_path = file_path + ".jpg"
+            # --- SMART MEDIA HANDLING ---
+            is_image = file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
+            thumb_path = None
+            
+            if not is_image:
+                # --- EXTRACT THUMBNAIL (Videos only) ---
+                thumb_path = file_path + ".jpg"
             try:
                 import imageio_ffmpeg
                 import subprocess
@@ -205,15 +210,19 @@ def upload_file_sync(file_path, caption, channel_link):
             except Exception as meta_err:
                 print(f"[!] Warning: Could not extract metadata dimensions: {meta_err}")
 
-            print(f"\n[*] 📤 Uploading {os.path.basename(file_path)} ({width}x{height}) to Telegram...", flush=True)
-            from telethon.tl.types import DocumentAttributeVideo
-            
-            video_attr = DocumentAttributeVideo(
-                duration=duration,
-                w=width,
-                h=height,
-                supports_streaming=True
-            )
+            # --- PREPARE ATTRIBUTES ---
+            attributes = []
+            if not is_image:
+                print(f"\n[*] 📤 Uploading {os.path.basename(file_path)} ({width}x{height}) to Telegram as VIDEO...", flush=True)
+                from telethon.tl.types import DocumentAttributeVideo
+                attributes.append(DocumentAttributeVideo(
+                    duration=duration,
+                    w=width,
+                    h=height,
+                    supports_streaming=True
+                ))
+            else:
+                print(f"\n[*] 📤 Uploading {os.path.basename(file_path)} to Telegram as PHOTO...", flush=True)
             
             await client.send_file(
                 target, 
@@ -221,7 +230,7 @@ def upload_file_sync(file_path, caption, channel_link):
                 caption=caption,
                 parse_mode='html', 
                 progress_callback=_progress,
-                attributes=[video_attr],
+                attributes=attributes,
                 thumb=thumb_path
             )
             

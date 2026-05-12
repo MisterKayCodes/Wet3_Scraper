@@ -664,7 +664,9 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                     is_hls = ".m3u8" in sd_link.lower()
                     is_direct = False
                     if not is_hls:
-                        if "ucarecdn.com" in sd_link or any(ext in sd_link.lower() for ext in ['.mp4', '.m4v', '.mov']):
+                        # Include images in direct download list
+                        direct_exts = ['.mp4', '.m4v', '.mov', '.jpg', '.jpeg', '.png', '.webp']
+                        if any(ext in sd_link.lower() for ext in direct_exts):
                             if "wasabisys.com" not in sd_link: # Wasabi is NEVER direct
                                 is_direct = True
                     
