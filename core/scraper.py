@@ -36,7 +36,9 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
         context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
         page = context.new_page()
         if stealth:
-            try: stealth(page)
+            try: 
+                stealth(page)
+                print("[*] 🛡️ Stealth mode activated.", flush=True)
             except: pass
             
         # --- MEMORY OPTIMIZATION: Block heavy assets ---
@@ -71,10 +73,10 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
                 if status_callback: status_callback(f"📄 <b>Processing Page:</b> {current_p} of {total_p}")
                 print(f"\n[*] --- PROCESSING PAGE {current_p} ---", flush=True)
                 
-                # STEP-WISE SCROLLING (More reliable for lazy-loading)
-                print(f"[*] Scrolling to reveal items...", flush=True)
-                for percent in [0.25, 0.5, 0.75, 1.0]:
-                    page.evaluate(f"window.scrollTo(0, document.body.scrollHeight * {percent})")
+                # FIXED PIXEL SCROLLING (Triggers lazy-loading better than percentages)
+                print(f"[*] Scrolling to reveal items (Fixed Pixel)...", flush=True)
+                for _ in range(5): # Scroll down 5000px total in chunks
+                    page.evaluate("window.scrollBy(0, 1000)")
                     time.sleep(2)
                 
                 # Final wait for items to render
