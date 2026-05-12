@@ -58,12 +58,15 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
             
             
             def get_page_evidence():
-                try:
-                    text = page.locator("body").text_content()
-                    match = re.search(r"Page\s*(\d+)\s*(?:of|/)\s*(\d+)", text)
-                    if match:
-                        return int(match.group(1)), int(match.group(2))
-                except: pass
+                print("[*] Waiting for pagination evidence...", flush=True)
+                for _ in range(10): # Try for 20 seconds
+                    try:
+                        text = page.locator("body").text_content()
+                        match = re.search(r"Page\s*(\d+)\s*(?:of|/)\s*(\d+)", text)
+                        if match:
+                            return int(match.group(1)), int(match.group(2))
+                    except: pass
+                    time.sleep(2)
                 return 1, 1
 
             current_p, total_p = get_page_evidence()
@@ -93,6 +96,7 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
                     if len(links) > 0:
                         break
                     if attempt == 0:
+                        print(f"[!] DEBUG: Page start content: {page.content()[:500].replace('\n', ' ')}", flush=True)
                         print("[!] Found 0 items. Waiting 10s for a second look...", flush=True)
                         time.sleep(10)
                         page.evaluate("window.scrollTo(0, 0)") # Scroll up and down to wake up JS
