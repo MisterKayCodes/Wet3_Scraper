@@ -91,7 +91,7 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
                 for attempt in range(2):
                     html = page.content()
                     soup = BeautifulSoup(html, "html.parser")
-                    links = soup.find_all("a", href=re.compile(r"swipe|get-monetized-link"))
+                    links = [a for a in soup.find_all("a", href=re.compile(r"swipe|get-monetized-link")) if "id=" in a.get('href', '')]
                     
                     if len(links) > 0:
                         break
@@ -112,16 +112,46 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
                         media_type = "unknown"
                         real_url = resolve_monetized_link(link)
                         
+                        print(f"[*] Analyzing link: {link.split('token=')[0]}...", flush=True)
+                        
                         if real_url:
                             try:
                                 h = requests.head(real_url, timeout=5)
                                 c_type = h.headers.get('Content-Type', '').lower()
-                                if "video" in c_type: media_type = "video"
-                                elif "image" in c_type: media_type = "image"
-                            except: pass
+                                # Enhanced header checks for HLS playlists and MP4s
+                                if "video" in c_type or "mpegurl" in c_type or "mp4" in c_type: 
+                                    media_type = "video"
+                                    print(f"  [DEBUG] -> Identified VIDEO via Headers (Content-Type: {c_type})", flush=True)
+                                elif "image" in c_type: 
+                                    media_type = "image"
+                                    print(f"  [DEBUG] -> Identified IMAGE via Headers (Content-Type: {c_type})", flush=True)
+                                else:
+                                    print(f"  [DEBUG] -> Headers unhelpful. Content-Type: {c_type}", flush=True)
+                            except Exception as e:
+                                print(f"  [DEBUG] -> requests.head failed. Error: {type(e).__name__}", flush=True)
+                            
+                            # Fallback 1: Deduce from the real_url extension if headers failed (e.g., wasabisys 403)
+                            if media_type == "unknown":
+                                clean_ext = real_url.lower().split('?')[0]
+                                if any(clean_ext.endswith(ext) for ext in ['.mp4', '.m3u8', '.webm']):
+                                    media_type = "video"
+                                    print(f"  [DEBUG] -> Identified VIDEO via Fallback 1 (Extension)", flush=True)
+                                elif any(clean_ext.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+                                    media_type = "image"
+                                    print(f"  [DEBUG] -> Identified IMAGE via Fallback 1 (Extension)", flush=True)
+                        else:
+                            print(f"  [DEBUG] -> resolve_monetized_link returned None", flush=True)
                         
-                        if media_type == "unknown" and "swipe?id=" in link:
-                            media_type = "video"
+                        # Fallback 2: Deduce from the original wet3 link format
+                        if media_type == "unknown":
+                            if "swipe?id=" in link or "destination=swipe" in link:
+                                media_type = "video"
+                                print(f"  [DEBUG] -> Identified VIDEO via Fallback 2 (Wet3 Anatomy)", flush=True)
+                            elif "get-monetized-link" in link:
+                                media_type = "image"
+                                print(f"  [DEBUG] -> Identified IMAGE via Fallback 2 (Wet3 Anatomy)", flush=True)
+                            else:
+                                print(f"  [!] -> ALL FALLBACKS FAILED. Item discarded.", flush=True)
 
                         if media_type != "unknown":
                             all_content.append({
