@@ -313,11 +313,11 @@ async def async_decode_token(page, monetized_url):
             
     return None
 
-def download_video_with_capture(context, sd_url, output_path, progress_callback=None, status_callback=None):
+def download_video_with_capture(context, sd_url, output_path, progress_callback=None, status_callback=None, expected_type=None):
     """
     Uses the shared context to trigger and capture the video download.
     """
-    print(f"[*] Opening host page: {sd_url}", flush=True)
+    print(f"[*] Opening host page: {sd_url} (Expected: {expected_type})", flush=True)
     captured_url = None
     user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
     
@@ -338,6 +338,12 @@ def download_video_with_capture(context, sd_url, output_path, progress_callback=
         is_image = any(ext in url.lower() for ext in image_exts) or "image" in request.headers.get("content-type", "").lower()
         is_cdn_media = any(domain in url.lower() for domain in cdn_domains) and (is_video or is_image)
         
+        # STRICT TYPE FILTERING (Fixing the Greedy Interceptor)
+        if expected_type == "video" and not is_video:
+            return
+        if expected_type == "image" and not is_image:
+            return
+            
         if is_video or is_image or is_cdn_media:
             # IGNORE KNOWN PREVIEW PATTERNS
             if "preview" in url.lower() or "/thumb" in url.lower():
@@ -669,39 +675,64 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
             # --- PHASE 1: DOWNLOAD (If needed) ---
             success = False
             if needs_download:
-                # 1. Resolve Link (using shared page)
-                sd_link = decode_token(page, video['link'], status_callback=status_callback)
+                print(f"[*] Extracting bypass targets from: {video['link'][:60]}...", flush=True)
                 
-                if sd_link:
-                    # --- SMART ROUTING ---
-                    is_hls = ".m3u8" in sd_link.lower()
-                    is_direct = False
-                    if not is_hls:
-                        # Include images and known media CDNs in direct download list
-                        direct_exts = ['.mp4', '.m4v', '.mov', '.jpg', '.jpeg', '.png', '.webp']
-                        direct_domains = ['ucarecdn.com', 'allaccessfans.co', 'b-cdn.net']
-                        
-                        is_media_url = any(ext in sd_link.lower() for ext in direct_exts)
-                        is_media_domain = any(domain in sd_link.lower() for domain in direct_domains)
-                        
-                        if is_media_url or is_media_domain:
-                            if "wasabisys.com" not in sd_link: # Wasabi is NEVER direct
-                                is_direct = True
-                    
+                direct_url = None
+                clean_page_url = video['link'] # Default fallback
+                
+                parsed_input = urllib.parse.urlparse(video['link'])
+                input_qs = urllib.parse.parse_qs(parsed_input.query)
+                
+                # 1. Decode Token (Phase 1)
+                if 'token' in input_qs:
+                    token_b64 = urllib.parse.unquote(input_qs['token'][0])
+                    token_b64 += "=" * ((4 - len(token_b64) % 4) % 4) # Fix padding
+                    try:
+                        decoded_str = base64.b64decode(token_b64).decode('utf-8')
+                        data = json.loads(decoded_str)
+                        if 'u' in data:
+                            direct_url = data['u']
+                            print(f"[+] Decoded Direct Link: {direct_url[:80]}...", flush=True)
+                    except Exception as e:
+                        print(f"[-] Token decode failed: {e}", flush=True)
+                
+                # 2. Construct Clean Page (Phase 2 Fallback)
+                if 'id' in input_qs and 'destination' in input_qs:
+                    clean_id = input_qs['id'][0]
+                    dest = input_qs['destination'][0]
+                    clean_page_url = f"https://wet3.click/{dest}?id={clean_id}"
+                    print(f"[+] Reconstructed Clean Page URL: {clean_page_url}", flush=True)
+                elif 'id' in input_qs and is_video and 'swipe' not in video['link']:
+                    # Fallback for videos missing destination but having ID
+                    clean_id = input_qs['id'][0]
+                    clean_page_url = f"https://wet3.click/swipe?id={clean_id}"
+                    print(f"[+] Inferred Clean Page URL: {clean_page_url}", flush=True)
+                
+                # --- EXECUTE DOWNLOAD ---
+                # Attempt 1: Smash & Grab (Direct URL via Requests)
+                if direct_url:
+                    print(f"[*] Phase 1: Attempting Smash & Grab via direct HTTP request...", flush=True)
+                    is_hls = ".m3u8" in direct_url.lower()
                     if is_hls:
-                        # Route directly to HLS stitcher — never use browser for a stream URL
                         print(f"[*] Direct HLS stream detected. Stitching...", flush=True)
                         cookies = {c['name']: c['value'] for c in context.cookies()}
-                        success = download_hls_stream(sd_link, output_path, headers={'User-Agent': base_ua}, cookies=cookies, progress_callback=progress_callback)
-                    elif is_direct:
-                        print(f"[+] Downloading DIRECT link...", flush=True)
-                        success = download_via_requests(sd_link, context.cookies(), base_ua, output_path, referrer="https://nelb6o.wet3.click/")
+                        success = download_hls_stream(direct_url, output_path, headers={'User-Agent': base_ua}, cookies=cookies, progress_callback=progress_callback)
                     else:
-                        print(f"[*] Using Browser Capture for: {sd_link}", flush=True)
-                        success = download_video_with_capture(context, sd_link, output_path, progress_callback=progress_callback, status_callback=status_callback)
-                else:
-                    print(f"[!] Critical failure: Failed to resolve link for: {video['title']}. Skipping to next video.", flush=True)
-                    continue # Skip this video instead of crashing the whole bot
+                        # Spoof the Referer to bypass Wasabi's hotlink protection
+                        success = download_via_requests(direct_url, context.cookies(), base_ua, output_path, referrer="https://wet3.click/")
+                
+                # Attempt 2: Ghost Protocol (Clean Page Browser Capture)
+                if not success:
+                    print(f"[*] Phase 1 failed or unavailable. Initiating Phase 2: Ghost Protocol (Clean Page)...", flush=True)
+                    expected_type = "video" if is_video else "image"
+                    # We pass expected_type to fix the Greedy Interceptor issue
+                    success = download_video_with_capture(context, clean_page_url, output_path, progress_callback=progress_callback, status_callback=status_callback, expected_type=expected_type)
+                    
+                    if not success and clean_page_url != video['link']:
+                        # Final Hail Mary: try the original dirty link
+                        print(f"[*] Phase 2 failed. Initiating Phase 3: Hail Mary on original URL...", flush=True)
+                        success = download_video_with_capture(context, video['link'], output_path, progress_callback=progress_callback, status_callback=status_callback, expected_type=expected_type)
+
             else:
                 success = True # We skipped download, so pretend it was successful so we can upload
             
