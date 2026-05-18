@@ -19,8 +19,8 @@ DOWNLOAD_DIR = "videos"
 DATA_DIR = "data"
 
 # Anti-Bot Settings (Cloudflare WARP or proxies)
-USE_PROXY = False  # Set to True on VPS after installing WARP
-PROXY_SERVER = "socks5://127.0.0.1:40000"  # Default Cloudflare WARP proxy port
+USE_PROXY = os.getenv("USE_PROXY", "False").lower() in ("true", "1", "yes")
+PROXY_SERVER = os.getenv("PROXY_SERVER", "socks5://127.0.0.1:40000")
 
 # Validation
 if not API_ID or not API_HASH:
