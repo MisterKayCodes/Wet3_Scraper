@@ -345,8 +345,13 @@ def download_video_with_capture(context, sd_url, output_path, progress_callback=
             return
             
         if is_video or is_image or is_cdn_media:
-            # IGNORE KNOWN PREVIEW PATTERNS
-            if "preview" in url.lower() or "/thumb" in url.lower():
+            # IGNORE KNOWN PREVIEW PATTERNS, ADS, AND TRACKERS
+            ignored_patterns = [
+                "preview", "/thumb", "impr.gif", "pixel.gif", "pixel.png", 
+                "kettledroopingcontinuation.com", "analytics", "tracking", 
+                "adsterra", "exoclick", "popunder"
+            ]
+            if any(pat in url.lower() for pat in ignored_patterns):
                 return
 
             if not captured_url:
