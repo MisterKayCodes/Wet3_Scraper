@@ -332,7 +332,7 @@ def download_video_with_capture(context, sd_url, output_path, progress_callback=
         # Capture Videos, Images, and BunnyCDN streams
         video_exts = [".mp4", ".m3u8", ".ts", ".m4s"]
         image_exts = [".jpg", ".jpeg", ".png", ".webp", ".gif"]
-        cdn_domains = ["b-cdn.net", "allaccessfans.co", "ucarecdn.com"]
+        cdn_domains = ["b-cdn.net", "allaccessfans.co", "ucarecdn.com", "wasabisys.com"]
         
         is_video = any(ext in url.lower() for ext in video_exts) or "video" in request.headers.get("content-type", "").lower()
         is_image = any(ext in url.lower() for ext in image_exts) or "image" in request.headers.get("content-type", "").lower()
@@ -347,9 +347,9 @@ def download_video_with_capture(context, sd_url, output_path, progress_callback=
         if is_video or is_image or is_cdn_media:
             # IGNORE KNOWN PREVIEW PATTERNS, ADS, AND TRACKERS
             ignored_patterns = [
-                "preview", "/thumb", "impr.gif", "pixel.gif", "pixel.png", 
-                "kettledroopingcontinuation.com", "analytics", "tracking", 
-                "adsterra", "exoclick", "popunder"
+                "preview", "/thumb", "impr.gif", "pixel.gif", "pixel.png", "img.gif",
+                "kettledroopingcontinuation.com", "rtmark", "doubleclick", "popunder",
+                "analytics", "tracking", "adsterra", "exoclick"
             ]
             if any(pat in url.lower() for pat in ignored_patterns):
                 return
