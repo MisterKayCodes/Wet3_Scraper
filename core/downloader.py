@@ -329,6 +329,12 @@ def download_video_with_capture(context, sd_url, output_path, progress_callback=
     def handle_request(request):
         nonlocal captured_url
         url = request.url
+        
+        # STRICT WHITELIST: Only intercept requests to our trusted media host domains
+        trusted_domains = ["wasabisys.com", "b-cdn.net", "allaccessfans.co", "ucarecdn.com", "wet3.click"]
+        if not any(domain in url.lower() for domain in trusted_domains):
+            return
+            
         # Capture Videos, Images, and BunnyCDN streams
         video_exts = [".mp4", ".m3u8", ".ts", ".m4s"]
         image_exts = [".jpg", ".jpeg", ".png", ".webp", ".gif"]
