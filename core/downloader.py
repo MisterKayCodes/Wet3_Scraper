@@ -753,16 +753,23 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                                 pass
                 
                 # Attempt 2: Ghost Protocol (Clean Page Browser Capture)
+                
                 if not success:
-                    print(f"[*] Phase 1 failed or unavailable. Initiating Phase 2: Ghost Protocol (Clean Page)...", flush=True)
-                    expected_type = "video" if is_video else "image"
-                    # We pass expected_type to fix the Greedy Interceptor issue
-                    success = download_video_with_capture(context, clean_page_url, output_path, progress_callback=progress_callback, status_callback=status_callback, expected_type=expected_type)
-                    
-                    if not success and clean_page_url != video['link']:
-                        # Final Hail Mary: try the original dirty link
-                        print(f"[*] Phase 2 failed. Initiating Phase 3: Hail Mary on original URL...", flush=True)
-                        success = download_video_with_capture(context, video['link'], output_path, progress_callback=progress_callback, status_callback=status_callback, expected_type=expected_type)
+                    # Check if we already know this is a 404 (ucarecdn or failed flag)
+                    if direct_url and "ucarecdn.com" in direct_url:
+                        print(f"[*] 🚫 Skipping Phase 2 for ucarecdn link (known 404)", flush=True)
+                        failed_flag = f"{output_path}.failed"
+                        with open(failed_flag, 'w') as f:
+                            f.write("404 - Media deleted from CDN")
+                        success = False
+                    else:
+                        print(f"[*] Phase 1 failed or unavailable. Initiating Phase 2: Ghost Protocol (Clean Page)...", flush=True)
+                        expected_type = "video" if is_video else "image"
+                        success = download_video_with_capture(context, clean_page_url, output_path, progress_callback=progress_callback, status_callback=status_callback, expected_type=expected_type)
+        
+                        if not success and clean_page_url != video['link']:
+                            print(f"[*] Phase 2 failed. Initiating Phase 3: Hail Mary on original URL...", flush=True)
+                            success = download_video_with_capture(context, video['link'], output_path, progress_callback=progress_callback, status_callback=status_callback, expected_type=expected_type)
 
             else:
                 success = True # We skipped download, so pretend it was successful so we can upload
