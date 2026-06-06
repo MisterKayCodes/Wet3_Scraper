@@ -1,4 +1,3 @@
-
 import os
 import re
 import time
@@ -30,11 +29,23 @@ def get_profile_data(target_url, max_pages=None, headless=False, status_callback
         launch_kwargs = {"headless": headless, "args": ["--disable-blink-features=AutomationControlled", "--no-sandbox"]}
         if config.USE_PROXY:
             launch_kwargs["proxy"] = {"server": config.PROXY_SERVER}
-            print(f"[*] 🛡️ Launching Scraper via WARP Proxy: {config.PROXY_SERVER}", flush=True)
+            print(f"[*] 🛡️ Launching Scraper via Proxy: {config.PROXY_SERVER}", flush=True)
 
         browser = p.chromium.launch(**launch_kwargs)
         context = browser.new_context(viewport={'width': 1920, 'height': 1080}, user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
         page = context.new_page()
+        
+        # --- PROXY IP VERIFICATION TEST ---
+        if config.USE_PROXY:
+            try:
+                test_page = context.new_page()
+                test_page.goto("https://api.ipify.org", timeout=10000)
+                proxy_ip = test_page.content()
+                print(f"[*] 🔍 Proxy exit IP: {proxy_ip}", flush=True)
+                test_page.close()
+            except Exception as e:
+                print(f"[!] Proxy IP test failed: {e}", flush=True)
+        
         if stealth:
             try: 
                 stealth(page)

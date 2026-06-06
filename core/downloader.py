@@ -493,6 +493,13 @@ def download_via_requests(url, browser_cookies, user_agent, output_path, referre
 
         try:
             with requests.get(url, **req_kwargs) as r:
+                if r.status_code == 404:
+                    print(f"[!] 404 Not Found - Media deleted from CDN. Skipping permanently.", flush=True)
+                    # Create .failed file to mark it permanently
+                    failed_flag = f"{output_path}.failed"
+                    with open(failed_flag, 'w') as f:
+                        f.write("404 - Media deleted from CDN")
+                    return False
                 if r.status_code == 403:
                     print(f"[!] 403 Forbidden with Referer: {ref}. Trying next...", flush=True)
                     continue
@@ -668,10 +675,17 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
             
             output_path = os.path.join(output_dir, filename)
             uploaded_flag = f"{output_path}.uploaded"
+            failed_flag = f"{output_path}.failed"
             
-            # --- SMART RESUME LOGIC ---
+            # --- SMART RESUME LOGIC with 404 skip ---
+            if os.path.exists(failed_flag):
+                print(f"[*] 🚫 Skipping permanently failed item (404): {filename}", flush=True)
+                pbar.update(1)
+                continue
+                
             if os.path.exists(uploaded_flag):
                 print(f"[*] Skipping already fully processed/uploaded: {filename}", flush=True)
+                pbar.update(1)
                 continue
                 
             needs_download = True
@@ -731,6 +745,12 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                     else:
                         # Spoof the Referer to bypass Wasabi's hotlink protection
                         success = download_via_requests(direct_url, context.cookies(), base_ua, output_path, referrer="https://wet3.click/")
+                        # Check if download failed due to 404
+                        if not success and os.path.exists(output_path):
+                            try:
+                                os.remove(output_path)
+                            except:
+                                pass
                 
                 # Attempt 2: Ghost Protocol (Clean Page Browser Capture)
                 if not success:
@@ -791,6 +811,10 @@ def process_video_queue(videos_list, start_index=1, output_dir="videos", prefix=
                             print(f"[!] Upload failed for {filename}. Will retry on next run.", flush=True)
             else:
                 print(f"[!] Failed to download: {video['title']}", flush=True)
+                # Create .failed file for 404s so they get skipped on future runs
+                if not os.path.exists(failed_flag):
+                    with open(failed_flag, 'w') as f:
+                        f.write("Download failed")
                 if tg:
                     try:
                         def safe_run_fail(coro):
